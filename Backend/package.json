@@ -1,0 +1,47 @@
+{
+  "name": "street-safe-backend",
+  "version": "1.0.0",
+  "description": "Backend for StreetSafe App.",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && TS_NODE_BASEURL=./dist node -r tsconfig-paths/register dist/src/index.js",
+    "setup": "npm run build && TS_NODE_BASEURL=./dist node -r tsconfig-paths/register dist/src/setup.js",
+    "dev": "ts-node -r tsconfig-paths/register src/index.ts",
+    "test": "vitest run --mode test",
+    "check": "tsc --noEmit",
+    "test:route": "ts-node src/routing/generateRoute.test.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "idly-faster-osm-parser": "^1.6.0",
+    "module-alias": "^2.3.4",
+    "osm-pbf-parser": "^2.3.0",
+    "socket.io": "^4.8.3",
+    "tsconfig-paths": "^4.2.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^7.2.0",
+    "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.1",
+    "ts-node": "^10.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "_moduleAliases": {
+    "~/lib": "dist/src/lib",
+    "~/services": "dist/src/services"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

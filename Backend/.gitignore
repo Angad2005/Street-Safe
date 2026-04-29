@@ -1,0 +1,5 @@
+main.db
+.env
+
+data/*.osm
+data/*.pbf
