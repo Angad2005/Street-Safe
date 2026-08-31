@@ -56,7 +56,7 @@ RUN chown -R node:node /usr/src/app
 USER node
 
 # Expose the Express port
-EXPOSE 5000
+EXPOSE 8080
 
 # FIX 2: Tell tsconfig-paths to resolve aliases inside the dist folder instead of src
 ENV TS_NODE_BASEURL=./dist

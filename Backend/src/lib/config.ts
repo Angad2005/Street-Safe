@@ -7,7 +7,7 @@ config({ quiet: true });
 const schema = z.object({
   DB_FILE: z.string().nonempty().default("main.db"),
   PORT: z.coerce.number().default(8080),
-  OAUTH_BASE_URL: z.string().nonempty(),
+  OAUTH_BASE_URL: z.string().nonempty().default(process.env.RENDER_EXTERNAL_URL || "http://localhost:8080"),
   OAUTH_GOOGLE_CLIENT_ID: z.string().nonempty(),
   OAUTH_GOOGLE_CLIENT_SECRET: z.string().nonempty(),
   HMAC_SIGNATURE_SECRET: z.string().nonempty(),
