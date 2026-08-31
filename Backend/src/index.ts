@@ -54,7 +54,7 @@ app.use(noCache);
 
 
 app.use(cors({
-  origin: ['http://localhost:8081', 'https://streetsafe.828101.xyz']
+  origin: ['http://localhost:8081', 'https://streetsafe.828101.xyz', process.env.FRONTEND_URL || 'http://localhost:8081'],
 }));
 
 app.use("/oauth2", oauthRouter);
