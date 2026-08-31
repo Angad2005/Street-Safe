@@ -7,6 +7,9 @@
 ![OAuth 2.0](https://img.shields.io/badge/OAuth_2.0-333333?style=for-the-badge)
 ![Google SSO](https://img.shields.io/badge/Google_SSO-4285F4?style=for-the-badge&logo=google&logoColor=white)
 
+# Deployment
+https://street-safe-wine.vercel.app/
+
 Short Description
 
 <img src="Docs/Screenshot%202026-03-24%20132555.png" height=400 width="200" alt="KernelKings Screenshot" style="margin-right: 15px;">  
