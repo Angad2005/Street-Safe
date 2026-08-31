@@ -5,24 +5,29 @@ import type { Notification } from "../types";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-const readMustExist = (relativePath: string) => {
+const readOptionalKey = (relativePath: string) => {
   const cwd = process.cwd();
   const fullPath = path.join(cwd, relativePath);
 
-  if (!existsSync(fullPath)) {
-    throw new Error(`File "${relativePath}" (relative to cwd) must exist for the server to run.`);
+  if (existsSync(fullPath)) {
+    return readFileSync(fullPath).toString().trim();
   }
+  return null;
+};
 
-  return readFileSync(fullPath).toString();
-}
+const getPublicKey = () => {
+  return (
+    process.env.VAPID_PUBLIC_KEY ||
+    readOptionalKey(path.join("priv", "vapid", "ed25519.pub"))
+  );
+};
 
-const PUBLIC_KEY = readMustExist(
-  path.join("priv", "vapid", "ed25519.pub"),
-);
-
-const PRIVATE_KEY = readMustExist(
-  path.join("priv", "vapid", "ed25519")
-);
+const getPrivateKey = () => {
+  return (
+    process.env.VAPID_PRIVATE_KEY ||
+    readOptionalKey(path.join("priv", "vapid", "ed25519"))
+  );
+};
 
 export const webPushSchema = z.object({
   endpoint: z.string().nonempty(),
@@ -56,6 +61,14 @@ export const send = async (
   webPushParams: WebPushParams,
   payload: Payload
 ) => {
+  const publicKey = getPublicKey();
+  const privateKey = getPrivateKey();
+
+  if (!publicKey || !privateKey) {
+    console.warn("Web push notification skipped: VAPID keys not configured.");
+    return;
+  }
+
   await webpush.sendNotification({
     endpoint: webPushParams.endpoint,
     keys: webPushParams.keys,
@@ -63,8 +76,8 @@ export const send = async (
   }, JSON.stringify(payload), {
     vapidDetails: {
       subject: "mailto:tpg439@student.bham.ac.uk",
-      publicKey: PUBLIC_KEY,
-      privateKey: PRIVATE_KEY,
+      publicKey,
+      privateKey,
     }
   });
 }

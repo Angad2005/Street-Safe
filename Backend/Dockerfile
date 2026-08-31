@@ -42,12 +42,13 @@ ENV NODE_ENV=production
 COPY --from=builder /usr/src/app/package*.json ./
 COPY --from=builder /usr/src/app/tsconfig.json ./tsconfig.json
 
-# Copy production node_modules and compiled output
+# Copy production node_modules, compiled output, and priv assets
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/dist ./dist
+COPY --from=builder /usr/src/app/priv ./priv
 
-# FIX 1: Create empty directories for database/assets instead of copying them
-RUN mkdir -p ./data ./priv
+# Create data directory for database
+RUN mkdir -p ./data
 
 # Ensure runtime user has ownership for SQLite writes and runtime operations
 RUN chown -R node:node /usr/src/app
