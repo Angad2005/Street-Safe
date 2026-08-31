@@ -27,6 +27,7 @@ RUN npm run build
 # Prune development dependencies
 RUN npm prune --omit=dev
 
+
 # ==========================================
 # STAGE 2: Secure & Lightweight Production Runtime
 # ==========================================
@@ -45,7 +46,7 @@ COPY --from=builder /usr/src/app/tsconfig.json ./tsconfig.json
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/dist ./dist
 
-# FIX: Create empty directories for database/assets instead of trying to copy them from the repo
+# FIX 1: Create empty directories for database/assets instead of copying them
 RUN mkdir -p ./data ./priv
 
 # Ensure runtime user has ownership for SQLite writes and runtime operations
@@ -56,6 +57,9 @@ USER node
 
 # Expose the Express port
 EXPOSE 5000
+
+# FIX 2: Tell tsconfig-paths to resolve aliases inside the dist folder instead of src
+ENV TS_NODE_BASEURL=./dist
 
 # Run the app with path mapping registered
 CMD ["node", "-r", "tsconfig-paths/register", "dist/src/index.js"]
