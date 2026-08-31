@@ -1,7 +1,7 @@
 # ==========================================
 # STAGE 1: Build & Compile TypeScript
 # ==========================================
-FROM node:22-bookworm-slim AS builder
+FROM node:18-slim AS builder
 
 WORKDIR /usr/src/app
 
@@ -25,13 +25,12 @@ COPY . .
 RUN npm run build
 
 # Prune development dependencies (removes typescript, dev types, etc.)
-RUN npm prune --production
-
+RUN npm prune --omit=dev
 
 # ==========================================
 # STAGE 2: Secure & Lightweight Production Runtime
 # ==========================================
-FROM node:22-bookworm-slim
+FROM node:18-slim
 
 WORKDIR /usr/src/app
 
@@ -43,17 +42,14 @@ COPY --from=builder /usr/src/app/package*.json ./
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy required static asset directories
-COPY --from=builder /usr/src/app/data ./data
-
-# Ensure runtime user has ownership of the application directory (needed for SQLite writes)
-RUN chown -R node:node /usr/src/app
+# Create runtime data directory and assign ownership to node user (needed for SQLite writes)
+RUN mkdir -p /usr/src/app/data && chown -R node:node /usr/src/app
 
 # Run the container as a non-privileged user for security
 USER node
 
-# Expose the Express port (matches your configuration file port)
+# Expose the Express port
 EXPOSE 5000
 
-# Run the app exactly how your start script dictates, mapping runtime modules
+# Run the app mapping runtime modules
 CMD ["node", "-r", "tsconfig-paths/register", "dist/src/index.js"]
