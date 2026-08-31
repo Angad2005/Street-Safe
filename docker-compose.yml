@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: streetsafe-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - TS_NODE_BASEURL=./dist
+      - GOOGLE_CLIENT_ID=your_google_id
+      - GOOGLE_CLIENT_SECRET=your_google_secret
+      - SESSION_SECRET=your_session_secret
+    volumes:
+      # This preserves your SQLite database on the host machine even if the container is destroyed!
+      - ./Backend/main.db:/usr/src/app/main.db
+    restart: always
