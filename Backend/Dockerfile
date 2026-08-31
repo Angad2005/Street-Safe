@@ -1,7 +1,7 @@
 # ==========================================
 # STAGE 1: Build & Compile TypeScript
 # ==========================================
-FROM node:18-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /usr/src/app
 
@@ -31,7 +31,7 @@ RUN npm prune --production
 # ==========================================
 # STAGE 2: Secure & Lightweight Production Runtime
 # ==========================================
-FROM node:18-slim
+FROM node:22-bookworm-slim
 
 WORKDIR /usr/src/app
 
