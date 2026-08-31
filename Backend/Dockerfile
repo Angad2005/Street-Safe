@@ -45,9 +45,8 @@ COPY --from=builder /usr/src/app/tsconfig.json ./tsconfig.json
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy required static assets and data files
-COPY --from=builder /usr/src/app/data ./data
-COPY --from=builder /usr/src/app/priv ./priv
+# FIX: Create empty directories for database/assets instead of trying to copy them from the repo
+RUN mkdir -p ./data ./priv
 
 # Ensure runtime user has ownership for SQLite writes and runtime operations
 RUN chown -R node:node /usr/src/app
