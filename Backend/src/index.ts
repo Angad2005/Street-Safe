@@ -53,9 +53,13 @@ const noCache = (req: any, res: { setHeader: (arg0: string, arg1: string) => voi
 app.use(noCache);
 
 
-app.use(cors({
-  origin: ['http://localhost:8081', 'https://streetsafe.828101.xyz', process.env.FRONTEND_URL || 'http://localhost:8081'],
-}));
+app.use(cors({                                                                                                                         
+      origin: [                                                                                                                            
+        'http://localhost:8081',                                                                                                           
+        'https://streetsafe.828101.xyz',                                                                                                   
+        'https://street-safe-wine.vercel.app' // Add your Vercel origin here                                                               
+      ]                                                                                                                                    
+    }));
 
 app.use("/oauth2", oauthRouter);
 app.use("/users", usersRouter);
