@@ -74,9 +74,22 @@ export const getToken = () => {
 
 export const fetchWithToken = async (url: string, options: RequestInit = {}) => {
   if (!isAuthed()) {
-    throw new Error("Cannot get a token while not authed");
+    clearCredentials();
+    return new Response(JSON.stringify({ error: "Not authenticated" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
   }
-  const token = getToken();
+  let token = "";
+  try {
+    token = getToken();
+  } catch {
+    clearCredentials();
+    return new Response(JSON.stringify({ error: "Not authenticated" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
   const response = await fetch(url, {
     ...options,
     headers: { ...options.headers, "Authorization": `Bearer ${token}` },

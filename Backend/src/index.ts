@@ -51,12 +51,26 @@ const noCache = (req: any, res: { setHeader: (arg0: string, arg1: string) => voi
 
 app.use(noCache);
 
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  next();
+});
+
 app.use(cors({
-  origin: [
-    'http://localhost:8081',
-    'https://streetsafe.828101.xyz',
-    'https://street-safe-wine.vercel.app'
-  ]
+  origin: (origin, callback) => {
+    if (
+      !origin ||
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+      origin.endsWith('.vercel.app') ||
+      origin === 'https://streetsafe.828101.xyz' ||
+      origin === 'https://street-safe-wine.vercel.app'
+    ) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
+  credentials: true,
 }));
 
 app.use("/oauth2", oauthRouter);
@@ -90,54 +104,46 @@ app.get('/api/geocode', async (req, res) => {
     }
 
     const queryKey = q.trim().toLowerCase();
+    if (queryKey === "your location") {
+      return res.json([]);
+    }
+
     const cached = geocodeCache.get(queryKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       return res.json(cached.data);
     }
 
     const geocodeUrl = `${GEOCODE_API}/search?q=${encodeURIComponent(q.trim())}&format=json&limit=5&addressdetails=1`;
-    let response: Response | undefined;
     let primaryFailed = false;
 
     try {
-      response = await fetch(geocodeUrl, {
+      const response = await fetch(geocodeUrl, {
         headers: {
-          'User-Agent': 'StreetSafe-App/1.0 (admin@streetsafe.828101.xyz)',
+          'User-Agent': 'StreetSafeApp/1.0 (contact@streetsafe.org)',
           'Accept': 'application/json',
         },
       });
+      if (response && response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          geocodeCache.set(queryKey, { timestamp: Date.now(), data });
+          return res.json(data);
+        }
+      }
     } catch (fetchErr) {
       primaryFailed = true;
     }
 
-    const isOk = response && (response.ok || response.ok === undefined);
-
-    if (isOk && !primaryFailed) {
-      let data: any;
-      if (typeof response!.text === 'function') {
-        const rawText = await response!.text();
-        try {
-          data = JSON.parse(rawText);
-        } catch {
-          data = null;
-        }
-      } else if (typeof (response as any).json === 'function') {
-        data = await (response as any).json();
-      }
-
-      if (data && Array.isArray(data)) {
-        geocodeCache.set(queryKey, { timestamp: Date.now(), data });
-        return res.json(data);
-      }
-    }
-
-    // Try Photon fallback if primary Nominatim service failed
+    // Try Photon fallback if primary Nominatim service failed or yielded no results
     try {
       const fallbackUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q.trim())}&limit=5`;
       const fallbackRes = await fetch(fallbackUrl, {
-        headers: { 'Accept': 'application/json' }
+        headers: {
+          'User-Agent': 'StreetSafeApp/1.0 (contact@streetsafe.org)',
+          'Accept': 'application/json'
+        }
       });
-      if (fallbackRes.ok) {
+      if (fallbackRes && fallbackRes.ok) {
         const fallbackJson = await fallbackRes.json();
         const fallbackData = (fallbackJson.features || []).map((f: any) => ({
           place_id: f.properties?.osm_id || Math.floor(Math.random() * 1000000),
@@ -152,16 +158,18 @@ app.get('/api/geocode', async (req, res) => {
           lon: String(f.geometry?.coordinates?.[0] ?? "")
         }));
 
-        if (fallbackData.length > 0) {
-          geocodeCache.set(queryKey, { timestamp: Date.now(), data: fallbackData });
-          return res.json(fallbackData);
-        }
+        geocodeCache.set(queryKey, { timestamp: Date.now(), data: fallbackData });
+        return res.json(fallbackData);
       }
     } catch (fallbackErr) {
       console.warn("Geocoding fallback failed:", fallbackErr);
     }
 
-    return res.status(500).json({ error: "Failed to fetch suggestions from Nominatim" });
+    if (primaryFailed) {
+      return res.status(500).json({ error: "Failed to fetch suggestions from Nominatim" });
+    }
+
+    return res.json([]);
   } catch (error) {
     console.error("Geocoding proxy error:", error);
     return res.status(500).json({ error: "Failed to fetch suggestions from Nominatim" });
@@ -232,7 +240,7 @@ app.post('/api/route',
         };
       }
 
-      if (!path.found) {
+      if (!path || !path.found || !('steps' in path) || !path.steps || path.steps.length === 0) {
         const dist = ptDist(startPoint, endPoint);
         path = {
           found: true,

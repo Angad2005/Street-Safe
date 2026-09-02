@@ -242,7 +242,7 @@ export default function Navigating() {
       const response = await fetch(`${BACKEND_URL}/api/geocode?q=${encodeURIComponent(trimmed)}`);
       if (response.ok) {
         const data = await response.json();
-        setSuggestions(Array.isArray(data) ? data : []);
+        setSuggestions(Array.isArray(data) && data.length > 0 ? data : []);
       } else {
         setSuggestions([]);
       }

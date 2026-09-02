@@ -54,9 +54,13 @@ export default function Friends() {
         fetchWithToken(`${BACKEND_URL}/api/getFriendRequests`),
       ]);
 
+      if (!friendsRes.ok || !pendingRes.ok || !incomingRes.ok) return;
+
       const friendsData = await friendsRes.json();
       const pendingData = await pendingRes.json();
       const incomingData = await incomingRes.json();
+
+      if (!Array.isArray(friendsData) || !Array.isArray(pendingData) || !Array.isArray(incomingData)) return;
 
       const fetchWithTokenUser = async (userId: number): Promise<User|null> => {
         try {

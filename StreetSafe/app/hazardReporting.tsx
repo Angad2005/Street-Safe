@@ -42,7 +42,9 @@ export default function HazardReporting() {
   const loadMarkersFromDB = async () => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/hazards`);
+      if (!response.ok) return;
       const data = await response.json();
+      if (!Array.isArray(data)) return;
       
       const formatted = data.map((item: any) => {
         const categoryKey = item.Category?.toLowerCase();

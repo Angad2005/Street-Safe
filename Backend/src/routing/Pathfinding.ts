@@ -97,7 +97,10 @@ function scaleDistance(hazards: Hazard[], edge: Edge, distance: number): number 
   const avg = { lat: edge.ptA.lat + (edge.ptB.lat - edge.ptA.lat) / 2, lng: edge.ptA.lng + (edge.ptB.lng - edge.ptA.lng) / 2 };
   
   const hazardDistances = hazards.map(hazard => {
-    return { distance: ptDist({ lat: hazard.Latitude, lng: hazard.Longitude }, avg), category: hazard.Category };
+    const lat = Number(hazard.Latitude);
+    const lng = Number(hazard.Longitude);
+    if (isNaN(lat) || isNaN(lng)) return { distance: 999999, category: hazard.Category };
+    return { distance: ptDist({ lat, lng }, avg), category: hazard.Category };
   });
 
   // Assume hazards 100m away are far enough to be safe
