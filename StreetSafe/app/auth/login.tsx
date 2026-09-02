@@ -30,32 +30,37 @@ const sanitizeRedirect = (url?: string): Route => {
     return "/";
   }
   return url as Route;
-}
+};
 
 const handleExternalLogin = async (
   context?: ExchangeContext,
   redirectTo?: string
 ) => {
-  if (!context) {
-    context = await AuthService.createContext("google");
-  }
+  try {
+    if (!context) {
+      context = await AuthService.createContext("google");
+    }
 
-  const result = await WebBrowser.openAuthSessionAsync(
-    context.authorizeUrl,
-    Linking.createURL("/auth/complete")
-  );
+    const redirectUrl = Linking.createURL("/auth/complete");
+    const result = await WebBrowser.openAuthSessionAsync(
+      context.authorizeUrl,
+      redirectUrl
+    );
 
-  if (["success", "dismiss"].includes(result.type)) {
-    AuthService.exchange(context.exchangeContextId)
-      .then((result) => {
+    if (["success", "dismiss"].includes(result.type)) {
+      const exchangeResult = await AuthService.exchange(context.exchangeContextId);
+      if (exchangeResult?.token) {
         useAuthState.getState().setCredentials({
-          token: result.token,
-          expiresAt: new Date(result.expiresAt).getTime()
+          token: exchangeResult.token,
+          expiresAt: new Date(exchangeResult.expiresAt).getTime()
         });
 
-        tryUpdateUser();
+        await tryUpdateUser();
         router.push(sanitizeRedirect(redirectTo));
-      });
+      }
+    }
+  } catch (error) {
+    console.warn("[Login] Auth session encountered an error:", error);
   }
 };
 
@@ -72,12 +77,15 @@ export default function Login() {
     AuthService.createContext("google")
       .then((res) => {
         contextRef.current = res;
+      })
+      .catch((err) => {
+        console.warn("[Login] Failed to create auth context:", err);
       });
   }, [signedIn]);
 
   const handlePress = useCallback(() => {
-    handleExternalLogin(contextRef.current, params.redirectTo)
-  }, [params.redirectTo])
+    handleExternalLogin(contextRef.current, params.redirectTo);
+  }, [params.redirectTo]);
 
   const handleGoBack = async () => {
     if (Platform.OS !== "web") await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -85,7 +93,7 @@ export default function Login() {
   };
 
   if (signedIn) {
-    return <Redirect href={sanitizeRedirect(params.redirectTo)} />
+    return <Redirect href={sanitizeRedirect(params.redirectTo)} />;
   }
 
   return (

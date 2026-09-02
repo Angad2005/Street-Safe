@@ -27,8 +27,6 @@ import { useDarkMode } from "utils/global";
 import { getDistance } from "utils/location";
 import { fetchWithToken } from "lib/stores/auth";
 
-const NOMINATIM_COOLDOWN = 0;
-
 interface Suggestion {
   place_id: number;
   display_name: string;
@@ -101,13 +99,13 @@ export default function Navigating() {
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const destInputRef = useRef<TextInput>(null);
   const panelAnim = useRef(new Animated.Value(0)).current;
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Location ──────────────────────────────────────────────────────────────
   const handleLocationChange = (loc: Location.LocationObject) => {
     const lat = loc.coords.latitude;
     const lng = loc.coords.longitude;
     setUserLocation({ lat, lng });
-    // Keep map centered on user if no route/destination is selected yet
     if (phase === "searching" && !destination) {
       setMapCenter([lat, lng]);
     }
@@ -165,7 +163,7 @@ export default function Navigating() {
     setMarkers(next);
   }, [userLocation, fromLocation, destination]);
 
-  // ─── Slide-up animation for route panel ───────────────────────────────────
+  // Slide-up animation for route panel
   useEffect(() => {
     Animated.spring(panelAnim, {
       toValue: routeOptions.length > 0 && phase === "searching" ? 1 : 0,
@@ -174,7 +172,7 @@ export default function Navigating() {
     }).start();
   }, [routeOptions, phase]);
 
-  // ─── Route fetching ────────────────────────────────────────────────────────
+  // Route fetching
   useEffect(() => {
     if (!destination || !fromLocation) { setRouteOptions([]); return; }
     setFetchingRoute(true);
@@ -194,7 +192,6 @@ export default function Navigating() {
         if (!data?.steps) return;
         const points: [number, number][] = data.steps.map((s: any) => [s.point.lat, s.point.lng]);
         const distKm = totalRouteKm(points);
-        // Walking speed ~5 km/h
         const durationMin = Math.round((distKm / 5) * 60);
         const option: RouteOption = {
           id: "main",
@@ -206,7 +203,6 @@ export default function Navigating() {
         setRouteOptions([option]);
         setSelectedRoute(option);
 
-        // AUTO-ZOOM CALCULATION
         if (points.length > 0) {
           const lats = points.map(p => p[0]);
           const lngs = points.map(p => p[1]);
@@ -221,8 +217,6 @@ export default function Navigating() {
           const lngSpan = (maxLng - minLng) * Math.cos(avgLat * Math.PI / 180);
           const maxSpan = Math.max(latSpan, lngSpan);
 
-          // Heuristic: Zoom 14 is ~0.02 deg span.
-          // Adjust zoom to fit maxSpan into ~70% of view.
           let z = 14;
           if (maxSpan > 0) {
             z = Math.floor(14 - Math.log2(maxSpan / 0.014));
@@ -235,22 +229,42 @@ export default function Navigating() {
       .finally(() => setFetchingRoute(false));
   }, [destination, fromLocation]);
 
-  // ─── Geocoding helpers ─────────────────────────────────────────────────────
+  // ─── Geocoding with Debounce ───────────────────────────────────────────────
   const fetchSuggestions = async (query: string) => {
-    if (query.length < 3) return;
+    const trimmed = query.trim();
+    if (trimmed.length < 3) return;
     setLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/api/geocode?q=${encodeURIComponent(query)}`);
-      setSuggestions(await response.json());
-    } catch { } finally { setLoading(false); }
+      const response = await fetch(`${BACKEND_URL}/api/geocode?q=${encodeURIComponent(trimmed)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSuggestions(Array.isArray(data) ? data : []);
+      } else {
+        setSuggestions([]);
+      }
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSearchChange = (text: string, type: "from" | "destination") => {
     if (type === "from") setFromQuery(text);
     else setDestQuery(text);
     setShowSuggestions(true);
-    if (text.length >= 3) fetchSuggestions(text);
-    else setSuggestions([{ place_id: -1, display_name: "Your Location", lat: "", lon: "" }]);
+
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    if (text.trim().length >= 3) {
+      searchDebounceRef.current = setTimeout(() => {
+        fetchSuggestions(text);
+      }, 400); // 400ms debounce
+    } else {
+      setSuggestions([{ place_id: -1, display_name: "Your Location", lat: "", lon: "" }]);
+    }
   };
 
   const handleFocus = (type: "from" | "destination") => {
@@ -284,6 +298,7 @@ export default function Navigating() {
   };
 
   const clearSearch = (type: "from" | "destination") => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     if (type === "from") { setFromQuery(""); setFromLocation(null); }
     else { setDestQuery(""); setDestination(null); setRouteOptions([]); }
     setShowSuggestions(true);
@@ -306,7 +321,13 @@ export default function Navigating() {
     router.replace("/");
   };
 
-  // ─── Derived ───────────────────────────────────────────────────────────────
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
+
   const activeLines = selectedRoute ? [selectedRoute.path] : [];
 
   // ─── PHASE 1: Searching ────────────────────────────────────────────────────
@@ -522,11 +543,8 @@ export default function Navigating() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-
-  // Nav bar
   navBar: {
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
@@ -551,11 +569,7 @@ const s = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   navTitle: { fontSize: 18, fontWeight: "700", color: "#1a1a1a" },
-
-  // Map
   mapWrapper: { flex: 1, zIndex: 1 },
-
-  // Search card
   searchCard: {
     position: "absolute",
     top: 16, left: 16, right: 16,
@@ -584,8 +598,6 @@ const s = StyleSheet.create({
     borderWidth: 0, marginBottom: 0, padding: 0,
   },
   searchDivider: { height: 1, backgroundColor: "#e2e8f0", marginLeft: 36 },
-
-  // Suggestions
   suggestions: {
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
@@ -600,8 +612,6 @@ const s = StyleSheet.create({
     borderBottomColor: "#e2e8f0",
   },
   suggestionText: { flex: 1, fontSize: 14 },
-
-  // Fetching badge
   fetchingBadge: {
     position: "absolute",
     bottom: 24,
@@ -619,8 +629,6 @@ const s = StyleSheet.create({
     gap: 8,
   },
   fetchingText: { color: "#fff", fontWeight: "600", fontSize: 14 },
-
-  // Route panel
   routePanel: {
     position: "absolute",
     bottom: 0, left: 0, right: 0,
@@ -672,8 +680,6 @@ const s = StyleSheet.create({
     paddingVertical: 9,
   },
   startBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-
-  // Active navigation overlay & bottom sheet
   navOverlay: {
     position: "absolute",
     top: Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0,

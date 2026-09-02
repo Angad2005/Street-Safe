@@ -75,18 +75,27 @@ app.get('/api/checkAuth',
   }
 );
 
-// ── Geocoding Proxy (RESOLVES CORS FOR WEB & CHECKS RESPONSE) ─────────
+// ── Geocoding Proxy (RESOLVES CORS & NOMINATIM RATE LIMITING) ─────────
+const geocodeCache = new Map<string, { timestamp: number; data: any }>();
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1-hour cache
+
 app.get('/api/geocode', async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q || typeof q !== 'string') {
-      return res.status(400).json({ error: "Query parameter 'q' is required" });
+    if (!q || typeof q !== 'string' || q.trim().length < 3) {
+      return res.status(400).json({ error: "Query parameter 'q' must be at least 3 characters" });
     }
 
-    const geocodeUrl = `${GEOCODE_API}/search?q=${encodeURIComponent(q)}&format=json&limit=5`;
+    const queryKey = q.trim().toLowerCase();
+    const cached = geocodeCache.get(queryKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return res.json(cached.data);
+    }
+
+    const geocodeUrl = `${GEOCODE_API}/search?q=${encodeURIComponent(q.trim())}&format=json&limit=5&addressdetails=1`;
     const response = await fetch(geocodeUrl, {
       headers: {
-        'User-Agent': 'StreetSafeBackend/1.0 (streetsafe@example.com)',
+        'User-Agent': 'StreetSafe-App/1.0 (admin@streetsafe.828101.xyz)',
         'Accept': 'application/json',
       },
     });
@@ -100,6 +109,7 @@ app.get('/api/geocode', async (req, res) => {
 
     try {
       const data = JSON.parse(rawText);
+      geocodeCache.set(queryKey, { timestamp: Date.now(), data });
       return res.json(data);
     } catch {
       console.error("Geocoding non-JSON response:", rawText.slice(0, 150));

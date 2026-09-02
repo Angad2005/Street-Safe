@@ -4,7 +4,6 @@ import {
   View, 
   Platform, 
   StyleSheet, 
-  Switch, 
   ScrollView, 
   Image, 
   TouchableOpacity, 
@@ -51,17 +50,19 @@ export default function Tracking() {
   
   const lineColors = ["blue", "red", "green", "orange", "purple"];
 
-  // Logic Helpers
   const handleGoBack = async () => {
     if (Platform.OS !== "web") await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.replace("/");
   };
 
   useEffect(() => {
+    let isMounted = true;
     const loadFriends = async () => {
       try {
-        const [friendsRes] = await Promise.all([fetchWithToken(`${BACKEND_URL}/api/getFriends`)]);
+        const friendsRes = await fetchWithToken(`${BACKEND_URL}/api/getFriends`);
+        if (!friendsRes.ok) return;
         const friendsData: Friend[] = await friendsRes.json();
+        
         const fetchUser = async (userId: number): Promise<User | null> => {
           try {
             const res = await fetchWithToken(`${BACKEND_URL}/users/getUser?id=${userId}`);
@@ -72,24 +73,28 @@ export default function Tracking() {
         const userList = (await Promise.all(friendsData.map((f) => {
           const otherId = f.sender_id === myId ? f.accepter_id : f.sender_id;
           return fetchUser(otherId);
-        }))).filter(Boolean) as User[];
-        setFriends(userList);
+        }))).filter((u): u is User => Boolean(u));
+        
+        if (isMounted) setFriends(userList);
       } catch (e) { console.warn("[Friends] Failed to load:", e); }
     };
     loadFriends();
+    return () => { isMounted = false; };
   }, [currentUser?.id]);
-
-
 
   useEffect(() => {
     const poll = async (friendId: number) => {
       try {
         if (!isTracking) return;
-        const res = await fetchWithToken(`${BACKEND_URL}/api/getFriendRoute`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ friendId }) });
+        const res = await fetchWithToken(`${BACKEND_URL}/api/getFriendRoute`, { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" }, 
+          body: JSON.stringify({ friendId }) 
+        });
         if (!res.ok) return;
 
         const data: { steps: { point: { lat: number, lng: number } }[] } = await res.json();
-        if (!data.steps) {
+        if (!data?.steps) {
           setRoutes((prev) => {
             const newRoutes = { ...prev };
             delete newRoutes[friendId];
@@ -105,10 +110,11 @@ export default function Tracking() {
           points: routePoints,
         };
 
-        const newRoutes = { ...routes };
-        newRoutes[friendId] = newRoute;
-        setRoutes(newRoutes);
-      } catch (e) { console.warn("[Poll] failed:", e); }
+        setRoutes((prev) => ({
+          ...prev,
+          [friendId]: newRoute,
+        }));
+      } catch (e) { console.warn("[Poll] route failed:", e); }
     };
 
     const pollAll = async () => {
@@ -117,13 +123,14 @@ export default function Tracking() {
       }
     };
 
-    pollAll(); 
-    linePollIntervalRef.current = setInterval(pollAll, POLL_INTERVAL_MS);
-    return () => { if (linePollIntervalRef.current) clearInterval(linePollIntervalRef.current); };
+    if (isTracking && selectedFriendIds.size > 0) {
+      pollAll(); 
+      linePollIntervalRef.current = setInterval(pollAll, POLL_INTERVAL_MS);
+    }
+    return () => { 
+      if (linePollIntervalRef.current) clearInterval(linePollIntervalRef.current); 
+    };
   }, [isTracking, selectedFriendIds]);
-
-
-
 
   useEffect(() => {
     const poll = async () => {
@@ -135,21 +142,22 @@ export default function Tracking() {
         if (currentUser?.id != null) delete others[currentUser.id];
 
         // Filter out users that are not selected
-        const filtered = Object.fromEntries(Object.entries(others).filter(([id]) => selectedFriendIds.has(parseInt(id))));
+        const filtered = Object.fromEntries(
+          Object.entries(others).filter(([id]) => selectedFriendIds.has(parseInt(id)))
+        );
         
-
         setOtherUsers(filtered);
-      } catch (e) { console.warn("[Poll] failed:", e); }
+      } catch (e) { console.warn("[Poll] locations failed:", e); }
     };
-    poll(); 
-    pollIntervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current); };
+
+    if (isTracking) {
+      poll(); 
+      pollIntervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
+    }
+    return () => { 
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current); 
+    };
   }, [currentUser?.id, isTracking, selectedFriendIds]);
-
-  useEffect(() => {
-    console.log('selectedFriendIds', selectedFriendIds);
-  }, [selectedFriendIds]);
-
 
   const toggleFriend = (id: number) => {
     setSelectedFriendIds((prev) => {
@@ -213,7 +221,6 @@ export default function Tracking() {
         <BaseText style={styles.statusLabel}>{isTracking ? "Tracking is ON" : "Tracking is OFF"}</BaseText>
 
         <Container>
-
           <View style={[s.friendsPanel, { marginTop: 15 }]}>
             <BaseText style={s.friendsPanelTitle}>Track friends ({selectedFriendIds.size})</BaseText>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.friendsList}>
