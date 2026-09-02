@@ -4,12 +4,16 @@ import { Href, router, Stack } from "expo-router";
 import { useFonts, Rajdhani_400Regular, Rajdhani_600SemiBold, Rajdhani_700Bold } from "@expo-google-fonts/rajdhani";
 import * as Haptics from 'expo-haptics';
 
+import * as WebBrowser from "expo-web-browser";
+
 import { useTheme } from "utils/useTheme";
 import { MainButton } from "components/MainButton";
 import { Root } from "components/Root";
 import { fetchWithToken, isAuthed, useAuthState } from "lib/stores/auth";
 import { ButtonText } from "components/ButtonText";
 import { BACKEND_URL } from "utils/config";
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function Home() {
   const theme = useTheme();

@@ -135,6 +135,8 @@ jest.mock("./lib/stores/auth", () => {
     __esModule: true,
     useAuthState: hook,
     getToken: jest.fn(() => "mock-token"),
+    isAuthed: jest.fn(() => true),
+    clearCredentials: jest.fn(),
     fetchWithToken: jest.fn().mockImplementation((url) => {
       let data = [];
       if (typeof url === 'string' && url.includes('/api/locations')) data = {};

@@ -47,7 +47,7 @@ export default function LeafletMap({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
 
-  const mapUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const mapUrl = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 
   const html = `
 <!DOCTYPE html>
@@ -108,7 +108,9 @@ ${isHighContrast ? `
         const map = L.map('map', { zoomControl: false }).setView([0, 0], 13);
         L.control.zoom({ position: 'bottomright' }).addTo(map);
         L.tileLayer("${mapUrl}", { 
-            attribution:"© OpenStreetMap" 
+            attribution:"&copy; OpenStreetMap &copy; CARTO",
+            subdomains: "abcd",
+            maxZoom: 19
         }).addTo(map);
 
         const markerLayer = L.layerGroup().addTo(map);
@@ -129,6 +131,7 @@ ${isHighContrast ? `
 
         function updateMarkers(markers){
             markerLayer.clearLayers();
+            if (!Array.isArray(markers)) return;
             markers.forEach(m => {
                 if (m.type === "circle" || m.type === "circle-marker") {
                     const circle = (m.type === "circle" ? L.circle : L.circleMarker)([m.lat, m.lng], {
@@ -156,6 +159,7 @@ ${isHighContrast ? `
 
         function updateLines(lines) {
             lineLayer.clearLayers();
+            if (!Array.isArray(lines)) return;
             lines.forEach(line => {
                 L.polyline(line.points, {
                     color: line.color || "blue",
@@ -166,10 +170,11 @@ ${isHighContrast ? `
 
         function onMessage(event) {
             try {
+                if (!event || !event.data) return;
                 const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-                if(msg.type === "updateMarkers") updateMarkers(msg.markers);
-                if(msg.type === "updateLines") updateLines(msg.lines);
-                if(msg.type === "updateCenter") updateCenter(msg.lat, msg.lng);
+                if(msg && msg.type === "updateMarkers") updateMarkers(msg.markers);
+                if(msg && msg.type === "updateLines") updateLines(msg.lines);
+                if(msg && msg.type === "updateCenter" && msg.lat != null && msg.lng != null) updateCenter(msg.lat, msg.lng);
             } catch(e) {}
         }
 

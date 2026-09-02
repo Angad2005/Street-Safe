@@ -72,6 +72,18 @@ export const getToken = () => {
   return data.token;
 }
 
-export const fetchWithToken = async (url: string, options: RequestInit = {}) => 
-  await fetch(url, { ...options, headers: { ...options.headers, "Authorization": `Bearer ${getToken()}` } });
+export const fetchWithToken = async (url: string, options: RequestInit = {}) => {
+  if (!isAuthed()) {
+    throw new Error("Cannot get a token while not authed");
+  }
+  const token = getToken();
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...options.headers, "Authorization": `Bearer ${token}` },
+  });
+  if (response.status === 401) {
+    clearCredentials();
+  }
+  return response;
+};
 

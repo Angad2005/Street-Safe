@@ -25,7 +25,7 @@ import { BACKEND_URL } from "utils/config";
 import { useTheme } from "utils/useTheme";
 import { useDarkMode } from "utils/global";
 import { getDistance } from "utils/location";
-import { fetchWithToken } from "lib/stores/auth";
+import { fetchWithToken, isAuthed } from "lib/stores/auth";
 
 interface Suggestion {
   place_id: number;
@@ -109,6 +109,7 @@ export default function Navigating() {
     if (phase === "searching" && !destination) {
       setMapCenter([lat, lng]);
     }
+    if (!isAuthed()) return;
     fetchWithToken(`${BACKEND_URL}/api/locations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -174,7 +175,7 @@ export default function Navigating() {
 
   // Route fetching
   useEffect(() => {
-    if (!destination || !fromLocation) { setRouteOptions([]); return; }
+    if (!destination || !fromLocation || !isAuthed()) { setRouteOptions([]); return; }
     setFetchingRoute(true);
     fetchWithToken(`${BACKEND_URL}/api/route`, {
       method: "POST",
@@ -232,7 +233,10 @@ export default function Navigating() {
   // ─── Geocoding with Debounce ───────────────────────────────────────────────
   const fetchSuggestions = async (query: string) => {
     const trimmed = query.trim();
-    if (trimmed.length < 3) return;
+    if (trimmed.length < 3 || trimmed.toLowerCase() === "your location") {
+      setSuggestions([{ place_id: -1, display_name: "Your Location", lat: "", lon: "" }]);
+      return;
+    }
     setLoading(true);
     try {
       const response = await fetch(`${BACKEND_URL}/api/geocode?q=${encodeURIComponent(trimmed)}`);
@@ -258,10 +262,11 @@ export default function Navigating() {
       clearTimeout(searchDebounceRef.current);
     }
 
-    if (text.trim().length >= 3) {
+    const trimmed = text.trim();
+    if (trimmed.length >= 3 && trimmed.toLowerCase() !== "your location") {
       searchDebounceRef.current = setTimeout(() => {
         fetchSuggestions(text);
-      }, 400); // 400ms debounce
+      }, 500); // 500ms debounce
     } else {
       setSuggestions([{ place_id: -1, display_name: "Your Location", lat: "", lon: "" }]);
     }
@@ -271,8 +276,12 @@ export default function Navigating() {
     setActiveSearch(type);
     setShowSuggestions(true);
     const text = type === "from" ? fromQuery : destQuery;
-    if (text.length < 3) setSuggestions([{ place_id: -1, display_name: "Your Location", lat: "", lon: "" }]);
-    else fetchSuggestions(text);
+    const trimmed = text.trim();
+    if (trimmed.length < 3 || trimmed.toLowerCase() === "your location") {
+      setSuggestions([{ place_id: -1, display_name: "Your Location", lat: "", lon: "" }]);
+    } else {
+      fetchSuggestions(text);
+    }
   };
 
   const handleSelectSuggestion = async (suggestion: Suggestion) => {

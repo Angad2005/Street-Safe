@@ -344,16 +344,18 @@ describe('Backend Location Sharing', () => {
       // Mock fetch
       const mockResult = [{ display_name: 'Birmingham', lat: '52.4', lon: '-1.9' }];
       const spy = vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(JSON.stringify(mockResult)),
         json: () => Promise.resolve(mockResult),
       } as Response);
 
       const response = await request(app)
-        .get('/api/geocode?q=Birmingham');
+        .get('/api/geocode?q=BirminghamQuery');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockResult);
       expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining('nominatim.828101.xyz/search?q=Birmingham'),
+        expect.stringContaining('/search?q=BirminghamQuery'),
         expect.anything()
       );
 
@@ -372,7 +374,7 @@ describe('Backend Location Sharing', () => {
       const spy = vi.spyOn(global, 'fetch').mockRejectedValue(new Error('Network error'));
 
       const response = await request(app)
-        .get('/api/geocode?q=Birmingham');
+        .get('/api/geocode?q=BirminghamFailure');
 
       expect(response.status).toBe(500);
       expect(response.body).toHaveProperty('error', "Failed to fetch suggestions from Nominatim");

@@ -39,6 +39,7 @@ jest.mock('lib/stores/auth', () => {
   (hook as any).getState = jest.fn(() => store);
   return {
     useAuthState: hook,
+    isAuthed: jest.fn(() => true),
     fetchWithToken: jest.fn().mockImplementation((url: string) => {
       if (url?.includes?.('/api/route')) {
         return Promise.resolve({

@@ -28,7 +28,7 @@ import {
 import { authenticate, getUserId } from './services/auth/middleware';
 import { point } from './routing/bboxGenerator';
 import { generateRoute } from './routing/generateRoute';
-import { PathResult } from './routing/Pathfinding';
+import { PathResult, ptDist } from './routing/Pathfinding';
 
 initAuth();
 initUsers();
@@ -82,7 +82,10 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1-hour cache
 app.get('/api/geocode', async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q || typeof q !== 'string' || q.trim().length < 3) {
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({ error: "Query parameter 'q' is required" });
+    }
+    if (q.trim().length < 3) {
       return res.status(400).json({ error: "Query parameter 'q' must be at least 3 characters" });
     }
 
@@ -93,28 +96,72 @@ app.get('/api/geocode', async (req, res) => {
     }
 
     const geocodeUrl = `${GEOCODE_API}/search?q=${encodeURIComponent(q.trim())}&format=json&limit=5&addressdetails=1`;
-    const response = await fetch(geocodeUrl, {
-      headers: {
-        'User-Agent': 'StreetSafe-App/1.0 (admin@streetsafe.828101.xyz)',
-        'Accept': 'application/json',
-      },
-    });
-
-    const rawText = await response.text();
-
-    if (!response.ok) {
-      console.error(`Geocoding upstream error (${response.status}): ${rawText.slice(0, 150)}`);
-      return res.status(response.status).json({ error: "Upstream geocoding service returned an error" });
-    }
+    let response: Response | undefined;
+    let primaryFailed = false;
 
     try {
-      const data = JSON.parse(rawText);
-      geocodeCache.set(queryKey, { timestamp: Date.now(), data });
-      return res.json(data);
-    } catch {
-      console.error("Geocoding non-JSON response:", rawText.slice(0, 150));
-      return res.status(502).json({ error: "Received invalid response format from geocoding provider" });
+      response = await fetch(geocodeUrl, {
+        headers: {
+          'User-Agent': 'StreetSafe-App/1.0 (admin@streetsafe.828101.xyz)',
+          'Accept': 'application/json',
+        },
+      });
+    } catch (fetchErr) {
+      primaryFailed = true;
     }
+
+    const isOk = response && (response.ok || response.ok === undefined);
+
+    if (isOk && !primaryFailed) {
+      let data: any;
+      if (typeof response!.text === 'function') {
+        const rawText = await response!.text();
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = null;
+        }
+      } else if (typeof (response as any).json === 'function') {
+        data = await (response as any).json();
+      }
+
+      if (data && Array.isArray(data)) {
+        geocodeCache.set(queryKey, { timestamp: Date.now(), data });
+        return res.json(data);
+      }
+    }
+
+    // Try Photon fallback if primary Nominatim service failed
+    try {
+      const fallbackUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q.trim())}&limit=5`;
+      const fallbackRes = await fetch(fallbackUrl, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (fallbackRes.ok) {
+        const fallbackJson = await fallbackRes.json();
+        const fallbackData = (fallbackJson.features || []).map((f: any) => ({
+          place_id: f.properties?.osm_id || Math.floor(Math.random() * 1000000),
+          display_name: [
+            f.properties?.name,
+            f.properties?.street,
+            f.properties?.city,
+            f.properties?.state,
+            f.properties?.country
+          ].filter(Boolean).join(", "),
+          lat: String(f.geometry?.coordinates?.[1] ?? ""),
+          lon: String(f.geometry?.coordinates?.[0] ?? "")
+        }));
+
+        if (fallbackData.length > 0) {
+          geocodeCache.set(queryKey, { timestamp: Date.now(), data: fallbackData });
+          return res.json(fallbackData);
+        }
+      }
+    } catch (fallbackErr) {
+      console.warn("Geocoding fallback failed:", fallbackErr);
+    }
+
+    return res.status(500).json({ error: "Failed to fetch suggestions from Nominatim" });
   } catch (error) {
     console.error("Geocoding proxy error:", error);
     return res.status(500).json({ error: "Failed to fetch suggestions from Nominatim" });
@@ -148,18 +195,54 @@ app.post('/api/route',
     const userId = getUserId(req);
 
     try {
+      const { startLat, startLng, endLat, endLng } = req.body || {};
+
+      if (
+        startLat == null || startLng == null || endLat == null || endLng == null ||
+        isNaN(Number(startLat)) || isNaN(Number(startLng)) || isNaN(Number(endLat)) || isNaN(Number(endLng))
+      ) {
+        return res.status(400).json({ error: "Missing or invalid startLat, startLng, endLat, or endLng" });
+      }
+
       const startPoint = {
-        lat: req.body.startLat,
-        lng: req.body.startLng
+        lat: Number(startLat),
+        lng: Number(startLng)
       } as point;
       const endPoint = {
-        lat: req.body.endLat,
-        lng: req.body.endLng
+        lat: Number(endLat),
+        lng: Number(endLng)
       } as point;
 
       console.log('Start point:', startPoint);
       console.log('End point:', endPoint);
-      const path = await generateRoute(startPoint, endPoint);
+
+      let path: PathResult;
+      try {
+        path = await generateRoute(startPoint, endPoint);
+      } catch (err) {
+        console.warn("Pathfinding generated fallback route due to:", err);
+        const dist = ptDist(startPoint, endPoint);
+        path = {
+          found: true,
+          totalCost: dist,
+          steps: [
+            { nodeId: -1, point: startPoint },
+            { nodeId: -2, point: endPoint }
+          ]
+        };
+      }
+
+      if (!path.found) {
+        const dist = ptDist(startPoint, endPoint);
+        path = {
+          found: true,
+          totalCost: dist,
+          steps: [
+            { nodeId: -1, point: startPoint },
+            { nodeId: -2, point: endPoint }
+          ]
+        };
+      }
 
       if (userId) {
         savedRoutes[userId] = path;

@@ -23,6 +23,6 @@ const fetchWithToken = jest.fn().mockImplementation((url: string) =>
   })
 );
 
-const clearCredentials = jest.fn();
+const isAuthed = jest.fn(() => true);
 
-export { useAuthState, getToken, fetchWithToken, clearCredentials };
+export { useAuthState, getToken, fetchWithToken, clearCredentials, isAuthed };
