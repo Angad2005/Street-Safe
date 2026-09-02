@@ -5,12 +5,12 @@ import { SignatureError, verify } from "~/lib/crypto/hmac";
 import { sessionService } from "./session";
 import { AuthenticationRequiredError, InvalidAuthenticationTokenError } from "./error";
 
-
 interface AuthenticateOptions {
-  required: boolean
+  required: boolean;
 }
 
-const TOKEN_REGEX = /^Bearer ([A-Za-z0-9\.\-_]{1,512})$/i;
+// Clean regex for Bearer tokens (alphanumeric, dot, dash, underscore)
+const TOKEN_REGEX = /^Bearer\s+([A-Za-z0-9._-]+)$/i;
 const kUserId = Symbol("userId");
 
 interface AuthenticatedRequest extends Request {
@@ -19,15 +19,15 @@ interface AuthenticatedRequest extends Request {
 
 const didRunAuthenticateMiddleware = (req: Request) => {
   return kUserId in req;
-}
+};
 
 export const getUserId = (req: Request): number | null => {
   if (!didRunAuthenticateMiddleware(req)) {
-    throw new Error(`This helper can only be called if the \"authenticate\" middleware is in the chain for the handler.`);
+    throw new Error(`This helper can only be called if the "authenticate" middleware is in the chain for the handler.`);
   }
 
   return (req as AuthenticatedRequest)[kUserId];
-}
+};
 
 export const authenticate = (options: AuthenticateOptions) => {
   return (
@@ -49,19 +49,19 @@ export const authenticate = (options: AuthenticateOptions) => {
       return next();
     }
 
-    const result = TOKEN_REGEX.exec(authorization);
+    const result = TOKEN_REGEX.exec(authorization.trim());
 
     if (!result) {
       throw new InvalidAuthenticationTokenError();
     }
 
-    const token = result.at(1)!;
-    
+    const token = result[1];
+
     // Bypass authentication for mock tokens during testing
     if (process.env.NODE_ENV === 'test' && token.startsWith('mock-')) {
       const lowerToken = token.toLowerCase();
       const idMatch = /mock-user-id-(\d+)/.exec(lowerToken);
-      
+
       let userId = 1;
       if (idMatch) {
         userId = parseInt(idMatch[1], 10);
@@ -70,13 +70,14 @@ export const authenticate = (options: AuthenticateOptions) => {
       } else if (lowerToken.includes('user-c')) {
         userId = 3;
       }
-      
+
       (req as AuthenticatedRequest)[kUserId] = userId;
       return next();
     }
 
     try {
-      const userId = sessionService.getSession(verify(token));
+      const verifiedToken = verify(token);
+      const userId = sessionService.getSession(verifiedToken);
 
       if (!userId && options.required) {
         throw new InvalidAuthenticationTokenError();
@@ -90,7 +91,7 @@ export const authenticate = (options: AuthenticateOptions) => {
 
       throw new InvalidAuthenticationTokenError(err);
     }
-    
+
     return next();
-  } 
+  };
 };

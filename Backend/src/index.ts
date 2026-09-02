@@ -4,7 +4,7 @@ import cors from 'cors';
 import { GEOCODE_API, PORT } from '~/lib/config';
 import { handleError } from '~/lib/errors';
 
-import { init as initAuth } from "~/services/auth"
+import { init as initAuth } from "~/services/auth";
 import { init as initUsers, userService } from '~/services/user';
 import { init as initIdp } from '~/services/idp';
 import { init as initPushNotifications } from '~/services/push-notifications';
@@ -35,7 +35,6 @@ initUsers();
 initIdp();
 initPushNotifications();
 
-
 const savedRoutes: { [key: number]: PathResult } = {};
 
 export const app = express();
@@ -52,14 +51,13 @@ const noCache = (req: any, res: { setHeader: (arg0: string, arg1: string) => voi
 
 app.use(noCache);
 
-
-app.use(cors({                                                                                                                         
-      origin: [                                                                                                                            
-        'http://localhost:8081',                                                                                                           
-        'https://streetsafe.828101.xyz',                                                                                                   
-        'https://street-safe-wine.vercel.app' // Add your Vercel origin here                                                               
-      ]                                                                                                                                    
-    }));
+app.use(cors({
+  origin: [
+    'http://localhost:8081',
+    'https://streetsafe.828101.xyz',
+    'https://street-safe-wine.vercel.app'
+  ]
+}));
 
 app.use("/oauth2", oauthRouter);
 app.use("/users", usersRouter);
@@ -67,34 +65,46 @@ app.use("/users", usersRouter);
 app.get('/api/checkAuth',
   authenticate({ required: true }),
   (req, res) => {
-  try {
-    getUserId(req)!;
-  } catch (error) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-  
-  res.status(200).json({ message: "Authenticated" });
-});
+    try {
+      getUserId(req);
+    } catch (error) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
 
-// ── Geocoding Proxy (RESOLVES CORS FOR WEB) ──────────────────────────
+    res.status(200).json({ message: "Authenticated" });
+  }
+);
+
+// ── Geocoding Proxy (RESOLVES CORS FOR WEB & CHECKS RESPONSE) ─────────
 app.get('/api/geocode', async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q) {
+    if (!q || typeof q !== 'string') {
       return res.status(400).json({ error: "Query parameter 'q' is required" });
     }
 
-    const response = await fetch(
-      `${GEOCODE_API}/search?q=${encodeURIComponent(q as string)}&format=json&limit=5`,
-      {
-        headers: {
-          'User-Agent': 'StreetSafeBackend/1.0',
-        },
-      }
-    );
-    const data = await response.json();
-    return res.json(data);
+    const geocodeUrl = `${GEOCODE_API}/search?q=${encodeURIComponent(q)}&format=json&limit=5`;
+    const response = await fetch(geocodeUrl, {
+      headers: {
+        'User-Agent': 'StreetSafeBackend/1.0 (streetsafe@example.com)',
+        'Accept': 'application/json',
+      },
+    });
 
+    const rawText = await response.text();
+
+    if (!response.ok) {
+      console.error(`Geocoding upstream error (${response.status}): ${rawText.slice(0, 150)}`);
+      return res.status(response.status).json({ error: "Upstream geocoding service returned an error" });
+    }
+
+    try {
+      const data = JSON.parse(rawText);
+      return res.json(data);
+    } catch {
+      console.error("Geocoding non-JSON response:", rawText.slice(0, 150));
+      return res.status(502).json({ error: "Received invalid response format from geocoding provider" });
+    }
   } catch (error) {
     console.error("Geocoding proxy error:", error);
     return res.status(500).json({ error: "Failed to fetch suggestions from Nominatim" });
@@ -118,44 +128,43 @@ app.post('/api/getFriendRoute',
     } else {
       return res.status(404).json({ error: "No route found for the specified friend" });
     }
-  })
+  }
+);
 
-// ── ROUTE (PUBLIC - NO AUTH) ─────────────────────────────────────────
+// ── ROUTE ─────────────────────────────────────────────────────────────
 app.post('/api/route',
   authenticate({ required: true }),
   async (req, res) => {
     const userId = getUserId(req);
 
-  try {
-    const startPoint = {
-      lat: req.body.startLat,
-      lng: req.body.startLng
-    } as point;
-    const endPoint = {
-      lat: req.body.endLat,
-      lng: req.body.endLng
-    } as point;
+    try {
+      const startPoint = {
+        lat: req.body.startLat,
+        lng: req.body.startLng
+      } as point;
+      const endPoint = {
+        lat: req.body.endLat,
+        lng: req.body.endLng
+      } as point;
 
-    console.log(startPoint);
-    console.log(endPoint);
+      console.log('Start point:', startPoint);
+      console.log('End point:', endPoint);
+      const path = await generateRoute(startPoint, endPoint);
 
-    console.log('Start point:', startPoint);
-    console.log('End point:', endPoint);
-    const path = await generateRoute(startPoint, endPoint);
+      if (userId) {
+        savedRoutes[userId] = path;
+      }
 
-    if (userId) {
-      savedRoutes[userId] = path;
+      return res.status(200).json(path);
+
+    } catch (error) {
+      console.error("Route error:", error);
+      return res.status(500).json({ error: "Failed to generate route" });
     }
-
-    return res.status(200).json(path);
-
-  } catch (error) {
-    console.error("Route error:", error);
-    return res.status(500).json({ error: "Failed to generate route" });
   }
-});
+);
 
-// ── Hazards ─────────────────────────────────────────
+// ── Hazards ───────────────────────────────────────────────────────────
 app.get('/api/hazards', (req, res) => {
   try {
     const data = getAllHazards();
@@ -181,7 +190,7 @@ app.post('/api/addhazards', (req, res) => {
   }
 });
 
-// ── Location sharing (AUTH REQUIRED) ─────────────────────────────────────────
+// ── Location sharing (AUTH REQUIRED) ──────────────────────────────────
 app.post('/api/locations',
   authenticate({ required: true }),
   (req, res) => {
@@ -194,9 +203,10 @@ app.post('/api/locations',
 
     upsertLocation(Number(userId), Number(lat), Number(lng));
     res.status(204).send();
-});
+  }
+);
 
-// GET /api/locations  — client polls for friend positions
+// GET /api/locations — client polls for friend positions
 app.get('/api/locations',
   authenticate({ required: true }),
   (req, res) => {
@@ -223,9 +233,10 @@ app.get('/api/locations',
       console.error(err);
       res.status(500).json({ error: "Failed to fetch locations" });
     }
-});
+  }
+);
 
-// ── Friends ─────────────────────────────────────────
+// ── Friends ───────────────────────────────────────────────────────────
 app.post("/api/createFriendRequest",
   authenticate({ required: true }),
   (req, res) => {
@@ -361,7 +372,7 @@ app.get("/api/getFriendRequestsSent",
   }
 );
 
-// ── Error handler ─────────────────────────────────────────
+// ── Error handler ─────────────────────────────────────────────────────
 app.use(handleError);
 
 if (process.env.NODE_ENV !== 'test') {

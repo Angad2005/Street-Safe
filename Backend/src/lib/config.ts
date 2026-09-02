@@ -15,7 +15,7 @@ const schema = z.object({
   APPLE_PUSH_NOTIFICATION_AUTHORIZATION_TOKEN: z.string().optional(),
   FCM_SERVER_KEY: z.string().optional(),
   FCM_PROJECT_NAME: z.string().optional(),
-  GEOCODE_API: z.string().nonempty().default("https://nominatim.828101.xyz"),
+  GEOCODE_API: z.string().nonempty().default("https://nominatim.openstreetmap.org"),
 })
   .superRefine(
     (arg, ctx) => allOrNone<typeof arg>([
